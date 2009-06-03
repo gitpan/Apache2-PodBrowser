@@ -1,0 +1,229 @@
+BODY {
+    background: white;
+    color: black;
+    font-family: sans-serif;
+    margin: 0;
+    padding: 1ex;
+}
+
+TABLE {
+    border-collapse: collapse;
+    border-spacing: 0;
+    border-width: 0;
+    color: inherit;
+}
+
+A:link, A:visited {
+    background: transparent;
+    color: #069;
+}
+
+PRE {
+    background: #eeeeee;
+    border: 1px solid #888888;
+    color: black;
+    padding-top: 1em;
+    padding-bottom: 1em;
+    white-space: pre;
+}
+
+CODE {
+    color: #c00;
+    font-family: monospace;
+    font-weight: bold;
+    font-size: 110%;
+}
+
+DT {
+    color: #06c;
+}
+
+H1 {
+    background: transparent;
+    color: #069;
+    font-size: 120%;
+    font-family: sans-serif;
+}
+
+H2 {
+    background: transparent;
+    color: #069;
+    font-size: 110%;
+    font-family: sans-serif;
+}
+
+H3 {
+    background: transparent;
+    color: #06c;
+    font-size: 100%;
+    font-family: sans-serif;
+    font-style: italic;
+}
+
+H3 A:link, H3 A:visited {
+    color: #06c;
+}
+
+H4 {
+    background: transparent;
+    color: #06c;
+    font-size: 100%;
+    font-family: sans-serif;
+}
+
+H4 A:link, H4 A:visited {
+    color: #06c;
+}
+
+.block {
+    background: transparent;
+}
+
+TD .block {
+    color: #069;
+    background: #dddddd;
+    padding: 0.2em;
+    font-size: large;
+}
+
+@media screen {
+  DIV.indexgroup:before {
+    content: "Content";
+    display: block;
+    color: #069;
+    font-size: 80%;
+    font-family: sans-serif;
+    font-variant: small-caps;
+    text-decoration: none;
+    font-weight: bold;
+    padding: 0.3em;
+    border: solid #aab 1px;
+    text-align: center;
+    width: auto;
+    height: auto;
+    background-color: #eef;
+    -moz-border-radius: 0.5em;
+    -webkit-border-radius: 0.5em;
+    border-radius: 0.5em;
+    -moz-opacity: 0.7;
+    opacity: 0.7;
+  }
+
+  DIV.indexgroup:hover:before {
+    content: "Content >>";
+    text-align: left;
+    -moz-border-radius-bottomleft: 0;
+    -webkit-border-bottom-left-radius: 0;
+    border-bottom-left-radius: 0;
+    -moz-border-radius-bottomright: 0;
+    -webkit-border-bottom-right-radius: 0;
+    border-bottom-right-radius: 0;
+  }
+
+  DIV.indexgroup:hover:after {
+    content: "<< Content";
+    text-align: right;
+    display: block;
+    color: #069;
+    font-size: 80%;
+    font-family: sans-serif;
+    font-variant: small-caps;
+    text-decoration: none;
+    font-weight: bold;
+    padding: 0.3em;
+    border: solid #aab 1px;
+    width: auto;
+    height: auto;
+    background-color: #eef;
+    -moz-border-radius-bottomleft: 0.5em;
+    -webkit-border-bottom-left-radius: 0.5em;
+    border-bottom-left-radius: 0.5em;
+    -moz-border-radius-bottomright: 0.5em;
+    -webkit-border-bottom-right-radius: 0.5em;
+    border-bottom-right-radius: 0.5em;
+    -moz-opacity: 0.7;
+    opacity: 0.7;
+  }
+
+  DIV.indexgroup {
+    display: block;
+    position: fixed;
+    top: 10px;
+    right: 10px;
+    -moz-opacity: 0.9;
+    opacity: 0.9;
+    z-index: 5;
+  }
+
+  DIV.indexgroup > * {
+    display: none;
+  }
+
+  DIV.indexgroup:hover > * {
+    display: block;
+    position: relative;
+    right: 0;
+    width: 30em;
+    height: 19.7em;
+    border-left: solid #aab 1px;
+    border-right: solid #aab 1px;
+    overflow: auto;
+    background-color: #eee;
+    margin: 0;
+  }
+
+  DIV.indexgroup:hover > div {
+    height: 6em;
+    padding-left: 1em;
+  }
+
+  A.uplink {
+    display: block;
+    position: fixed;
+    top: 10px;
+    right: 6em;
+    text-align: center;
+
+    color: #069;
+    font-size: 80%;
+    font-family: sans-serif;
+    font-variant: small-caps;
+    text-decoration: none;
+    font-weight: bold;
+    padding: 0.3em;
+    border: solid #aab 1px;
+    width: auto;
+    height: auto;
+    background-color: #eef;
+    -moz-border-radius: 0.5em;
+    -webkit-border-radius: 0.5em;
+    border-radius: 0.5em;
+    -moz-opacity: 0.7;
+    opacity: 0.7;
+    z-index: 10;
+  }
+}
+
+@media print {
+  DIV.indexgroup, A.uplink {
+    display: none;
+  }
+
+  BODY {
+    font-size: 70%;
+  }
+}
+
+.podindex a {
+    display: inline-block;
+    width: 19em;
+}
+
+.podindex .indexgroup a {
+    width: 2em;
+    text-align: center;
+}
+
+HR {
+    display: none;
+}
