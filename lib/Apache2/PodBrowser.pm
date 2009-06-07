@@ -2,9 +2,10 @@
 
 package Apache2::PodBrowser;
 
+use 5.008008;
 use strict;
 
-our $VERSION = '0.01';
+our $VERSION = '0.03';
 
 use Apache2::RequestRec ();
 use Apache2::RequestUtil ();
@@ -21,10 +22,31 @@ use Pod::Find;
 use Pod::Simple::HTML;
 BEGIN {require bytes};
 
-sub _indexlink {'<a class="uplink" href="'.$_[0].'/">Up</a>'}
+use constant {
+  INDEX_NORMAL=>0,
+  INDEX_PODINDEX=>1,
+  INDEX_FUNCINDEX=>2,
+};
+
+sub _indexlink {
+    ("<div class=\"uplink\">\n".
+     join( '', map {
+         "    <a href=\"$_->[1]\">$_->[0]</a>\n";
+     } ($_[0] ==INDEX_PODINDEX  ? (['Function and Variable Index', './??'])
+        :$_[0]==INDEX_FUNCINDEX ? (['Pod Index', './'])
+        : (['Pod Index', './'], ['Function and Variable Index', './??']))).
+     "</div>\n");
+}
 
 sub _header {
-    my ($title, $style)=@_;
+    my ($kind, $style)=@_;
+
+    my ($title, $uplink)=
+        ($kind==INDEX_PODINDEX
+         ? ('POD Index', _indexlink($kind))
+         :$kind==INDEX_FUNCINDEX
+         ? ('Function and Variable Index', _indexlink($kind))
+         :());
 
     <<"EOF";
 <!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">
@@ -34,7 +56,7 @@ sub _header {
 
 </head>
 <body class='podindex'>
-<h1>POD Index</h1>
+$uplink<h1>$title</h1>
 EOF
 }
 
@@ -42,11 +64,12 @@ sub _footer {"</body></html>\n"}
 
 {
     my ($current, @index);
+    my %html=('"'=>'&quot;', '<'=>'&lt;', '>'=>'&gt;', '&'=>'&amp;');
 
     sub _reset_link_generator { ($current, @index)=('') }
 
     sub _link {
-        my ($name)=@_;
+        my ($name, $linkprefix)=@_;
 
         my $prefix='';
         my $firstchar=substr($name, 0, 1);
@@ -63,14 +86,18 @@ sub _footer {"</body></html>\n"}
             $display=$name;
         }
         my $title=$name;
-        $name=~s{([^A-Za-z0-9\-_.!~*'()/:])}{uc sprintf("%%%02x",ord($1))}eg;
-        $prefix."<a href=\"./$name\" title=\"$title\">$display</a>";
+        $name=~s{([^A-Za-z0-9\-_.!~*'()/:\$@&=+,;?\\\]\[^`|<>{}])}
+                {sprintf("%%%02X",ord($1))}eg;
+        for my $x ($title, $display) {
+            $x=~s/(["<>&])/$html{$1}/ge;
+        }
+        $prefix."<a href=\"./$linkprefix$name\" title=\"$title\">$display</a>";
     }
 
     sub _gen_index {
-        "<div class=\"indexgroup\"><div>".join("\n", map {
+        "<div class=\"indexgroup\"><div>\n    ".join("\n    ", map {
             "<a href=\"#$_\">$_</a>";
-        } @index)."</div></div>\n";
+        } @index)."\n</div></div>\n";
     }
 }
 
@@ -87,53 +114,145 @@ sub _stylesheet {
     return $stylesheet;
 }
 
-sub _index {
+sub _findpod {
+    my ($r, $name, $ignore_NOINC)=@_;
+    $name=~s!^/!!;
+    $name=Pod::Find::pod_where
+        ( {
+           -inc=>$ignore_NOINC || !$r->dir_config->get('NOINC'),
+           -dirs=>[$r->dir_config->get('PODDIR')],
+          },
+          $name );
+    die \Apache2::Const::NOT_FOUND unless( length $name );
+
+    unless( $ignore_NOINC ) {
+        # only if called for a real document
+        $r->finfo(APR::Finfo::stat($name, APR::Const::FINFO_NORM,
+                                   $r->pool));
+
+        $r->set_last_modified($r->finfo->mtime);
+        $r->set_etag;
+        my $rc=$r->meets_conditions;
+        die \$rc unless( $rc==Apache2::Const::OK );
+    }
+
+    return $name;
+}
+
+sub _findex {
     my ($r)=@_;
 
     my @links=do {
+        local $_;
         my %unique;
-        undef @unique{values %{+{Pod::Find::pod_find
-                                 ({
-                                   -inc=>!$r->dir_config->get('NOINC'),
-                                  },
-                                  $r->dir_config->get('PODDIR'))}}};
+
+        open my $f, '<', _findpod($r, 'perlfunc', 1) or
+            die \Apache2::Const::NOT_FOUND;
+
+        my $level=0;
+        while ( <$f> ) {
+            if( ($level==0 && /^=over 8/)..($level==1 && /^=back/) ) {
+                /^=over/ and $level++;
+                /^=back/ and $level--;
+                $level==1 && /^=item ([-\w]+)/ and undef $unique{$1};
+            }
+        }
+
+        open my $f, '<', _findpod($r, 'perlvar', 1) or
+            die \Apache2::Const::NOT_FOUND;
+
+        my $level=0;
+        while ( <$f> ) {
+            if( ($level==0 && /^=over 8/)..($level==1 && /^=back/) ) {
+                /^=over/ and $level++;
+                /^=back/ and $level--;
+                $level==1 && /^=item (?!IO::|HANDLE|\$\w+\{expr\})(.+)/
+                    and do {
+                        my $name=$1;
+                        $name='$1..$N' if $name=~/digit/i;
+                        undef $unique{$name};
+                    };
+            }
+        }
+
         _reset_link_generator;
-        map {_link($_)} sort keys %unique;
+        map {_link($_, '?')} sort keys %unique;
     };
 
-    return (_header('POD Index', _stylesheet($r)).
+    return (_header(INDEX_FUNCINDEX, _stylesheet($r)).
             _gen_index.
             join("\n", @links)."\n".
             _footer);
 }
 
-sub _getpodfuncdoc {
-    my ( $file, $fun ) = @_;
+sub _index {
+    my ($r)=@_;
 
-    # Functions like -r, -e, etc. are listed under `-X'.
-    my $search_re = ($fun =~ /^-[rwxoRWXOeszfdlpSbctugkTBMAC]$/
-                     ? '(?:I<)?-X' : quotemeta($fun));
+    my @links=do {
+        my %unique;
+        undef @unique{values %{+{do {
+            local $SIG{__WARN__}=sub{}; # silence some warnings
+            Pod::Find::pod_find
+                  ({
+                    -inc=>!$r->dir_config->get('NOINC'),
+                    -script=>1,
+                   },
+                   $r->dir_config->get('PODDIR'));
+        }}}};
+        _reset_link_generator;
+        map {_link($_, '')} sort keys %unique;
+    };
+
+    return (_header(INDEX_PODINDEX, _stylesheet($r)).
+            _gen_index.
+            join("\n", @links)."\n".
+            _footer);
+}
+
+sub _scanit {
+    my ($r, $fun, $where) = @_;
+    local $_;
+
+    $fun=~s/%([0-9A-Fa-f]{2})/pack('H2', $1)/eg;
+    my $search_re = ($fun=~/^-[rwxoRWXOeszfdlpSbctugkTBMAC]$/
+                     ? qr/^=item\s+(?:I<)?-X\b/
+                     : $fun=~/^\$[1-9]/
+                     ? qr/^=item\s+\$<I<digits>>/
+                     : $fun=~/^\$</
+                     ? qr/^=item\s+\$<(?!I<digits>>)/
+                     : $fun=~/\w$/
+                     ? qr/^=item\s+\Q$fun\E\b/
+                     : qr/^=item\s+\Q$fun\E/);
+
+    #warn "fun=$fun -- re=$search_re\n";
 
     my $document='';
 
-    open my $f, "<$file" or return;
+    open my $f, '<', _findpod($r, $where, 1) or
+        die \Apache2::Const::NOT_FOUND;
     # Skip introduction
-    local $_;
-    while ( <$f> ) {
-        last if /^=head2 Alphabetical Listing of Perl Functions/;
-    }
+    while( <$f> ) {/^=over 8/ and last}
 
     # Look for our function
-    my $found = 0;
-    my $inlist = 0;
-    while ( <$f> ) {  # "The Mothership Connection is here!"
-        if ( m/^=item\s+$search_re\b/ )  {
+    my $found=0;
+    my $inlist=0;
+    my $prefix='';
+
+    while( <$f> ) {
+        if ( /$search_re/ )  {
             $found = 1;
         } elsif (/^=item/) {
-            if ($found > 1 and not $inlist) {
+            if ($found > 1 and !$inlist) {
                 close $f;
-                return "=over 4\n\n$document\n\n=back\n\n";
+                return "=over 4\n\n$prefix$document\n\n=back\n\n";
+            } elsif (!$found and !$inlist) {
+                $prefix.=$_."\n";
             }
+        } elsif ($found > 1 and !$inlist and /^=back/) {
+            close $f;
+            return "=over 4\n\n$prefix$document\n\n=back\n\n";
+        } elsif (!$found and /\S/) {
+            $prefix='';
         }
         next unless $found;
         if (/^=over/) {
@@ -143,6 +262,17 @@ sub _getpodfuncdoc {
         }
         $document .= "$_";
         ++$found if /^\w/;        # found descriptive text
+    }
+
+    die \Apache2::Const::NOT_FOUND;
+}
+
+sub _getpodfuncdoc {
+    my ($r, $fun) = @_;
+
+    foreach my $name (qw/perlfunc perlvar/) {
+        my $doc=eval {_scanit $r, $fun, $name};
+        return $doc unless $@;
     }
 
     die \Apache2::Const::NOT_FOUND;
@@ -164,7 +294,7 @@ sub _body {
     $parser->r($r) if ($parser->can('r'));
     $parser->html_css(_stylesheet($r)) if ($parser->can('html_css'));
     $parser->html_header_after_title($parser->html_header_after_title.
-                                     _indexlink($r->location)."\n")
+                                     _indexlink(INDEX_NORMAL)."\n")
         if ($uplink and $parser->can('html_header_after_title'));
     $parser->no_errata_section(1);
     $parser->complain_stderr(1);
@@ -179,8 +309,8 @@ sub _body {
         }
     }
     if ( $function ) {
-        my $document=_getpodfuncdoc( $file, $function );
-        $parser->parse_string_document( $document );
+        $parser->parse_string_document( _getpodfuncdoc($r, $function) );
+        $body=~s!<a href="(?:\./perl(?:func|var))?#([^"]+)"!<a href="./?$1"!g;
     } else {
         $parser->parse_file( $file );
     }
@@ -207,28 +337,6 @@ sub _compress {
         }
     }
     return $_[0];
-}
-
-sub _findpod {
-    my ($r, $name, $ignore_NOINC)=@_;
-    $name=~s!^/!!;
-    $name=Pod::Find::pod_where
-        ( {
-           -inc=>$ignore_NOINC || !$r->dir_config->get('NOINC'),
-           -dirs=>[$r->dir_config->get('PODDIR')],
-          },
-          $name );
-    die \Apache2::Const::NOT_FOUND unless( length $name );
-
-    $r->finfo(APR::Finfo::stat($name, APR::Const::FINFO_NORM,
-                               $r->pool));
-
-    $r->set_last_modified($r->finfo->mtime);
-    $r->set_etag;
-    my $rc=$r->meets_conditions;
-    die \$rc unless( $rc==Apache2::Const::OK );
-
-    return $name;
 }
 
 sub handler {
@@ -260,8 +368,11 @@ sub handler {
                 die \Apache2::Const::REDIRECT;
             } elsif($r->path_info eq '/') {
                 if( $r->args ) {    # /perldoc/?FUNCTION
-                    my $fn=_findpod($r, 'perlfunc', 1); # sets also finfo
-                    $body=_compress(_body($r, $fn, $r->args, 1), $r);
+                    if( $r->args eq '?' ) {
+                        $body=_compress(_findex($r), $r);
+                    } else {
+                        $body=_compress(_body($r, undef, $r->args, 1), $r);
+                    }
                 } else {            # generate index
                     $body=_compress(_index($r), $r);
                 }
@@ -425,6 +536,8 @@ Apache2::PodBrowser - show your POD in a browser
 Yet another mod_perl2 handler to view POD in a HTML browser. See L</HISTORY>
 for more information.
 
+=head2 Direct Mode
+
 C<Apache2::PodBrowser> can run in I<direct> and I<perldoc> modes. In
 direct mode apache takes care of the URI to filename translation. So,
 C<< $r->filename >> points to a regular file when the request hits
@@ -432,23 +545,48 @@ C<Apache2::PodBrowser>'s handler. Use this mode if your POD files
 are installed in one directory tree which is accessible through the WEB
 server. You'll perhaps need an additional directory index handler.
 
+=head2 Perldoc Mode
+
 In I<perldoc> mode you specify a C<Location> where the handler resides.
-At this location you'll see an index of all PODs accessible on your
-server. If you append a module name to the location URL as in
+If you append a module name to the location URL as in
 
   http://localhost/location/Apache2::PodBrowser
 
 you'll get its documentation.
 
-Further, in I<perldoc> mode you can ask for documentation for a given
+Further, in perldoc mode you can ask for documentation for a given
 perl function similar to C<perldoc -f open> at the command line. Simply
 call the location and give the wanted function as CGI keyword:
 
   http://localhost/location/?open
 
-Usually you want to use C<perldoc> mode. It allows you to access PODs
+The same works also for special variables. Try
+
+  http://localhost/location/?$_
+
+and you'll see the documentation for C<$_>.
+
+Usually you want to use perldoc mode. It allows you to access PODs
 at their natural locations. On the downside, it is of
 course a bit slower.
+
+=head2 Indexes
+
+Also in perldoc mode, there are 2 indexes available, one of all installed
+modules and scripts that come with POD and one of built-in functions and
+variables.
+
+The the handler location itself shows the module index:
+
+  http://localhost/location/
+
+If a single question mark C<?> is given as CGI keyword the function and
+variable index is shown:
+
+  http://localhost/location/??
+
+Don't worry you don't have to remember all these URLs. The pages are
+properly linked together.
 
 =head1 CONFIGURATION
 
@@ -479,11 +617,16 @@ For perldoc mode add the following lines to your F<httpd.conf>:
       PerlSetVar  STYLESHEET fancy
   </Location>
 
-You can then get documentation for a module C<Foo::Bar> at
-L<http://localhost/perldoc/Foo::Bar>
+You can then get documentation for module C<Apache2::PodBrowser> at
+L<http://localhost/perldoc/Apache2::PodBrowser>.
 
-Finally, a particular Perl function's documentation is at
-L<http://localhost/perldoc/?functionname>.
+Finally, a particular Perl built-in function's or variable's documentation
+is at L<http://localhost/perldoc/?function_or_variable_name>. For example
+L<http://localhost/perldoc/?open> or L<http://localhost/perldoc/?$_>.
+
+At L<http://localhost/perldoc/> you'll see a module index and at
+L<http://localhost/perldoc/??> an index over all built-in functions and
+variables.
 
 =head2 Configuration Variables
 
@@ -659,10 +802,6 @@ copy it into your C<DocumentRoot> and set C<STYLESHEET> to find it.
 =over 4
 
 =item * speed up POD index generation
-
-=item * C<perlfunc> index
-
-=item * C<perlvar> index
 
 =back
 

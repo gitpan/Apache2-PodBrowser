@@ -11,6 +11,7 @@ DESCRIPTION
     Yet another mod_perl2 handler to view POD in a HTML browser. See
     "HISTORY" for more information.
 
+  Direct Mode
     "Apache2::PodBrowser" can run in *direct* and *perldoc* modes. In direct
     mode apache takes care of the URI to filename translation. So,
     "$r->filename" points to a regular file when the request hits
@@ -18,22 +19,45 @@ DESCRIPTION
     installed in one directory tree which is accessible through the WEB
     server. You'll perhaps need an additional directory index handler.
 
-    In *perldoc* mode you specify a "Location" where the handler resides. At
-    this location you'll see an index of all PODs accessible on your server.
-    If you append a module name to the location URL as in
+  Perldoc Mode
+    In *perldoc* mode you specify a "Location" where the handler resides. If
+    you append a module name to the location URL as in
 
       http://localhost/location/Apache2::PodBrowser
 
     you'll get its documentation.
 
-    Further, in *perldoc* mode you can ask for documentation for a given
-    perl function similar to "perldoc -f open" at the command line. Simply
-    call the location and give the wanted function as CGI keyword:
+    Further, in perldoc mode you can ask for documentation for a given perl
+    function similar to "perldoc -f open" at the command line. Simply call
+    the location and give the wanted function as CGI keyword:
 
       http://localhost/location/?open
 
-    Usually you want to use "perldoc" mode. It allows you to access PODs at
+    The same works also for special variables. Try
+
+      http://localhost/location/?$_
+
+    and you'll see the documentation for $_.
+
+    Usually you want to use perldoc mode. It allows you to access PODs at
     their natural locations. On the downside, it is of course a bit slower.
+
+  Indexes
+    Also in perldoc mode, there are 2 indexes available, one of all
+    installed modules and scripts that come with POD and one of built-in
+    functions and variables.
+
+    The the handler location itself shows the module index:
+
+      http://localhost/location/
+
+    If a single question mark "?" is given as CGI keyword the function and
+    variable index is shown:
+
+      http://localhost/location/??
+
+    Don't worry you don't have to remember all these URLs. The pages are
+    properly linked together.
 
 CONFIGURATION
   Direct Mode
@@ -61,11 +85,17 @@ CONFIGURATION
           PerlSetVar  STYLESHEET fancy
       </Location>
 
-    You can then get documentation for a module "Foo::Bar" at
-    <http://localhost/perldoc/Foo::Bar>
+    You can then get documentation for module "Apache2::PodBrowser" at
+    <http://localhost/perldoc/Apache2::PodBrowser>.
 
-    Finally, a particular Perl function's documentation is at
-    <http://localhost/perldoc/?functionname>.
+    Finally, a particular Perl built-in function's or variable's
+    documentation is at
+    <http://localhost/perldoc/?function_or_variable_name>. For example
+    <http://localhost/perldoc/?open> or <http://localhost/perldoc/?$_>.
+
+    At <http://localhost/perldoc/> you'll see a module index and at
+    <http://localhost/perldoc/??> an index over all built-in functions and
+    variables.
 
   Configuration Variables
     The following variables affect the work of "Apache2::PodBrowser". They
@@ -228,10 +258,6 @@ CONFIGURATION
 
 WHISHLIST
     *   speed up POD index generation
-
-    *   "perlfunc" index
-
-    *   "perlvar" index
 
 HISTORY
     As you may know there is already Apache2::Pod::HTML. This module has

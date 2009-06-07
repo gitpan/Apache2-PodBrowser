@@ -1,5 +1,7 @@
 use strict;
 
+use 5.008008;
+
 BEGIN {
   eval {
     require ModPerl::MM;

@@ -7,7 +7,7 @@ Requires:     perl(Pod::Find) perl(Pod::Simple::HTML) perl(Test::More)
 Requires:     perl(File::Spec)
 Autoreqprov:  on
 Summary:      Apache2::PodBrowser
-Version:      0.01
+Version:      0.03
 Release:      1
 Source:       Apache2-PodBrowser-%{version}.tar.gz
 BuildRoot:    %{_tmppath}/%{name}-%{version}-build

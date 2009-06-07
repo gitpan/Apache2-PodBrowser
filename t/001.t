@@ -11,7 +11,7 @@ use File::Spec;
 use Compress::Zlib;
 
 #plan 'no_plan';
-plan tests => 58;
+plan tests => 72;
 
 Apache::TestRequest::user_agent(reset => 1,
 				requests_redirectable => 0);
@@ -79,7 +79,8 @@ $resp=GET_BODY("/perldoc/");
 # <a href="perlfunc" title="perlfunc">perlfunc</a>
 like $resp, qr!<a href="\./perlpod" title="perlpod">perlpod</a>!,
     'POD Index: found perlpod';
-unlike $resp, qr!class="uplink"!, 'POD Index: without uplink';
+unlike $resp, qr!href="\./"!, 'POD Index: no "Pod Index" link';
+like $resp, qr!href="\./\?\?"!, 'POD Index: "Function Index" link';
 
 # this test also covers unescaped colons in title=...
 # <a href="./d::p" title="d::p">d::p</a>
@@ -87,19 +88,48 @@ like $resp, qr!<a href="\./d::p" title="d::p">d::p</a>!,
     'POD Index: found d::p (probably found in PODDIR)';
 
 ##########################################
+# Function index
+##########################################
+t_debug 'Testing Function index';
+
+$resp=GET("/perldoc??");     # expect redirect
+
+like $resp->header('Location'), qr!/perldoc/\?\?!, 'redirect location';
+is $resp->code, 302, 'redirect code';
+
+$resp=GET_BODY("/perldoc/??");
+
+like $resp, qr!<a href="\./\?\$_" title="\$_">\$_</a>!,
+    'Function Index: found $_';
+like $resp, qr!<a href="\./\?ref" title="ref">ref</a>!,
+    'Function Index: found ref';
+like $resp, qr!href="\./"!, 'Function Index: "Pod Index" link';
+unlike $resp, qr!href="\./\?\?"!, 'Function Index: no "Function Index" link';
+
+##########################################
 # POD index / NOINC
 ##########################################
-t_debug 'Testing POD index with NOINC';
+t_debug 'Testing POD/Function index with NOINC';
 
 $resp=GET_BODY("/NOINC/");
 
 unlike $resp, qr!perlpod!, 'POD Index: perlpod not found';
-unlike $resp, qr!class="uplink"!, 'POD Index: without uplink';
+unlike $resp, qr!href="\./"!, 'POD Index: no "Pod Index" link';
+like $resp, qr!href="\./\?\?"!, 'POD Index: "Function Index" link';
 
 # this test also covers unescaped colons in title=...
 # <a href="./d::p" title="d::p">d::p</a>
 like $resp, qr!<a href="\./d::p" title="d::p">d::p</a>!,
     'POD Index: but found d::p';
+
+$resp=GET_BODY("/NOINC/??");
+
+like $resp, qr!<a href="\./\?\$_" title="\$_">\$_</a>!,
+    'Function Index: found $_';
+like $resp, qr!<a href="\./\?ref" title="ref">ref</a>!,
+    'Function Index: found ref';
+like $resp, qr!href="\./"!, 'Function Index: "Pod Index" link';
+unlike $resp, qr!href="\./\?\?"!, 'Function Index: no "Function Index" link';
 
 ##########################################
 # POD index: content compression
@@ -130,7 +160,9 @@ t_debug 'Testing perldoc -f mode';
 
 $resp=GET_BODY("/perldoc/?abs");
 
-like $resp, qr!<a class="uplink" href="/perldoc/">Up</a>!, 'got uplink';
+like $resp, qr!href="\./"!, '"Pod Index" link';
+like $resp, qr!href="\./\?\?"!, '"Function Index" link';
+
 like $resp, qr!>abs VALUE\b!, 'abs VALUE (first =item)';
 like $resp, qr~>abs(?! VALUE\b)~, 'abs (2nd =item)';
 
@@ -155,7 +187,8 @@ t_debug 'Testing perldoc mode';
 $resp=GET_BODY("/perldoc/d::p");
 
 like $resp, qr!NAME bla</a></h1>!, 'got it';
-like $resp, qr!<a class="uplink" href="/perldoc/">Up</a>!, 'got uplink';
+like $resp, qr!href="\./"!, '"Pod Index" link';
+like $resp, qr!href="\./\?\?"!, '"Function Index" link';
 
 like $resp, qr!a href="\./other::module#Head2"!, 'link to existing module';
 like $resp, qr!a href="\./missing::module#section"!,

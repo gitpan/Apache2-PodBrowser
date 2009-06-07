@@ -1,6 +1,6 @@
 --- #YAML:1.0
 name:               Apache2-PodBrowser
-version:            0.01
+version:            0.03
 abstract:           show your POD in a browser
 author:
     - Torsten Foertsch <torsten.foertsch@gmx.net>

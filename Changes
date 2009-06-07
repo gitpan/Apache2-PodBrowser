@@ -1,2 +1,11 @@
-0.01	 Wed Jun  3 14:23:39 CEST 2009
-	 initial version
+0.03	Sun Jun  7 18:02:56 CEST 2009
+	- Fix most links between perlvar and perlfunc when viewing
+	  single functions or variables
+	- better (???) fancy stylesheet
+
+0.02	Sat Jun  6 14:57:54 CEST 2009
+	- Function and Variables index
+	- perlvar extracts for single variables
+
+0.01	Wed Jun  3 14:23:39 CEST 2009
+	initial version
