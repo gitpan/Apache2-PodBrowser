@@ -46,11 +46,8 @@ sub MY::postamble {
 pure_all :: blib/lib/Apache2/PodBrowser/auto.css.gz \
             blib/lib/Apache2/PodBrowser/fancy.css.gz
 
-blib/lib/Apache2/PodBrowser/auto.css.gz : lib/Apache2/PodBrowser/auto.css
-	gzip -9f <lib/Apache2/PodBrowser/auto.css >blib/lib/Apache2/PodBrowser/auto.css.gz
-
-blib/lib/Apache2/PodBrowser/fancy.css.gz : lib/Apache2/PodBrowser/fancy.css
-	gzip -9f <lib/Apache2/PodBrowser/fancy.css >blib/lib/Apache2/PodBrowser/fancy.css.gz
+%.gz : %
+	gzip -9f <$< >$@
 
 rpm: dist
 	$(PERL) -i -pe 's/^(Version:\s*).*/$${1}$(VERSION)/' perl-Apache2-PodBrowser.spec

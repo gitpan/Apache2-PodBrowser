@@ -5,7 +5,7 @@ package Apache2::PodBrowser;
 use 5.008008;
 use strict;
 
-our $VERSION = '0.03';
+our $VERSION = '0.04';
 
 use Apache2::RequestRec ();
 use Apache2::RequestUtil ();
@@ -15,12 +15,11 @@ use Apache2::URI ();
 use Apache2::Log ();
 use APR::Finfo ();
 use APR::Table ();
-use Apache2::Const -compile => qw/OK DECLINED REDIRECT NOT_FOUND/;
+use Apache2::Const -compile => qw/OK DECLINED REDIRECT NOT_FOUND SERVER_ERROR/;
 use APR::Const -compile => qw/FINFO_NORM FILETYPE_DIR FILETYPE_REG
-                              FILETYPE_NOFILE/;
+                              FILETYPE_NOFILE SUCCESS ENOENT/;
 use Pod::Find;
 use Pod::Simple::HTML;
-BEGIN {require bytes};
 
 use constant {
   INDEX_NORMAL=>0,
@@ -125,18 +124,19 @@ sub _findpod {
           $name );
     die \Apache2::Const::NOT_FOUND unless( length $name );
 
-    unless( $ignore_NOINC ) {
-        # only if called for a real document
-        $r->finfo(APR::Finfo::stat($name, APR::Const::FINFO_NORM,
-                                   $r->pool));
-
-        $r->set_last_modified($r->finfo->mtime);
-        $r->set_etag;
-        my $rc=$r->meets_conditions;
-        die \$rc unless( $rc==Apache2::Const::OK );
-    }
-
     return $name;
+}
+
+sub update_finfo {
+    my ($r, $name)=@_;
+
+    $r->finfo(APR::Finfo::stat($name, APR::Const::FINFO_NORM,
+                               $r->pool)) if defined $name;
+
+    $r->set_last_modified($r->finfo->mtime);
+    $r->set_etag;
+    my $rc=$r->meets_conditions;
+    die \$rc unless $rc==Apache2::Const::OK;
 }
 
 sub _findex {
@@ -359,6 +359,7 @@ sub handler {
             $loc=~s!/+$!!;          # cut off trailing slash;
             $r->path_info(substr($r->uri, length($loc)));
 
+            my $pos;
             if ($r->path_info eq '') {
                 # issue a redirect to ourself with a trailing slash
                 # to generate correct links.
@@ -376,8 +377,36 @@ sub handler {
                 } else {            # generate index
                     $body=_compress(_index($r), $r);
                 }
+            } elsif(($pos=index $r->path_info, '/', 1)>0) {
+                # image or something like that, e.g.
+                #   =for html <img src="Apache2::PodBrowser/img.png">
+                my $path=_findpod($r, substr($r->path_info, 1, $pos-1));
+                unless( $path=~s!\.[^.]+$!! ) {
+                    $path=~s!/[^/]+$!!;
+                }
+                $path.=substr $r->path_info, $pos;
+                update_finfo $r, $path;
+                if( $r->finfo->filetype==APR::Const::FILETYPE_REG ) {
+                    if( substr($path, -4) eq '.png' ) {
+                        $r->content_type('image/png');
+                    } elsif( substr($path, -4) eq '.jpg' or
+                             substr($path, -5) eq '.jpeg' ) {
+                        $r->content_type('image/jpeg');
+                    } elsif( substr($path, -4) eq '.gif' ) {
+                        $r->content_type('image/gif');
+                    } elsif( substr($path, -3) eq '.js' ) {
+                        $r->content_type('text/javascript');
+                    }
+                    $r->set_content_length($r->finfo->size);
+                    my $rc=$r->sendfile($path);
+                    $rc==APR::Const::SUCCESS or die \$rc;
+                    die \Apache2::Const::OK;
+                } else {
+                    die \Apache2::Const::NOT_FOUND;
+                }
             } else {
                 my $fn=_findpod($r, $r->path_info);
+                update_finfo $r, $fn;
                 $body=_compress(_body($r, $fn, undef, 1), $r);
             }
         } else {                    # simple handler
@@ -387,10 +416,7 @@ sub handler {
                 if (length $r->path_info or
                     ($r->finfo->filetype!=APR::Const::FILETYPE_REG));
 
-            $r->set_last_modified($r->finfo->mtime);
-            $r->set_etag;
-            my $rc=$r->meets_conditions;
-            die \$rc unless( $rc==Apache2::Const::OK );
+            update_finfo $r;
 
             $body=_compress(_body($r, $r->filename, undef, 0), $r);
         }
@@ -399,9 +425,18 @@ sub handler {
     # the points to a scalar containing the HTTP error code
     # If that is not the case the next line will lead to an internal
     # server error which is ok then.
-    return ${$@} if( $@ );
+    return Apache2::Const::NOT_FOUND
+        if ref $@ eq 'APR::Error' and $@==APR::Const::ENOENT;
 
-    $r->set_content_length(bytes::length($body));
+    return ${$@} if ref $@ eq 'SCALAR';
+
+    if( $@ ) {
+        chomp $@;
+        $r->log_reason($@);
+        return Apache2::Const::NOT_FOUND;
+    }
+
+    $r->set_content_length(length($body));
     $r->print( $body );
 
     return Apache2::Const::OK;
@@ -870,6 +905,80 @@ C<Apache2::PodBrowser> uses the L<Apache::Test> framework to test its
 work. L<Apache2::Pod::HTML> tests almost only the presence of POD.
 
 =back
+
+=head1 Embedding HTML in POD
+
+=begin html
+
+<div style="width: 80px; height: 104px; background-color: #fff;
+            float: right;">
+<img align="right"
+     alt="Picture of Torsten Foertsch"
+     src="Apache2%3A%3APodBrowser/torsten-foertsch.jpg"
+     border="0">
+</div>
+
+=end html
+
+POD provides the
+
+ =begin html
+ ...
+ =end html
+
+or
+
+ =for html ...
+
+syntax. This module supports it. If you look at this document via this
+module you'll probably see a picture of me on the right side.
+
+Example:
+
+ =begin html
+
+ <img align="right"
+      alt="Picture of ..."
+      src="http://host.name/image.jpg"
+      border="0">
+
+ =end html
+
+You might notice that the image URL is absolute. Wouldn't it be good to
+bundle the images with the module, install them somewhere beside it in
+C<@INC> and reference them relatively?
+
+It is possible to do that in perldoc mode.
+Just strip off the C<.pm> or C<.pod> suffix
+from the installed perl module file name and make a directory with that
+name. For example assuming that this module is installed as:
+
+ /perl/lib/Apache2/PodBrowser.pm
+
+create the directory
+
+ /perl/lib/Apache2/PodBrowser
+
+and place the images there.
+
+To include them in POD write:
+
+ =begin html
+
+ <img align="right"
+      alt="Picture of ..."
+      src="./Apache2::PodBrowser/torsten-foertsch.jpg"
+      border="0">
+
+ =end html
+
+If the POD file name doesn't contain a dot (C<.>) the last path component
+is stripped off to get the directory name.
+
+Note that you need to write the package name again. You also need to
+either escape the semicolons as in
+C<src="Apache2%3A%3APodBrowser/torsten-foertsch.jpg"> or put a C<./>
+in front of the link.
 
 =head1 SEE ALSO
 

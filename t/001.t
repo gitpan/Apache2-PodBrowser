@@ -5,13 +5,13 @@ use warnings FATAL => 'all';
 use Apache::Test qw{:withtestmore};
 use Test::More;
 use Apache::TestUtil;
-use Apache::TestUtil qw/t_write_file/;
+use Apache::TestUtil qw/t_write_file t_catfile/;
 use Apache::TestRequest qw{GET_BODY GET};
 use File::Spec;
 use Compress::Zlib;
 
 #plan 'no_plan';
-plan tests => 72;
+plan tests => 74;
 
 Apache::TestRequest::user_agent(reset => 1,
 				requests_redirectable => 0);
@@ -19,7 +19,7 @@ Apache::TestRequest::user_agent(reset => 1,
 my $droot=Apache::Test::vars->{documentroot};
 my $resp;
 
-t_write_file(File::Spec->catfile($droot, 'd', 'p.pod'), <<'POD');
+t_write_file(t_catfile($droot, 'd', 'p.pod'), <<'POD');
 
 =head1 NAME bla
 
@@ -35,7 +35,7 @@ L<missing::module/section>
 
 POD
 
-t_write_file(File::Spec->catfile($droot, 'other', 'module.pod'), <<'POD');
+t_write_file(t_catfile($droot, 'other', 'module.pod'), <<'POD');
 
 =head1 NAME bla
 
@@ -227,6 +227,18 @@ $resp=GET '/perldoc/fancy.css', 'Accept-Encoding'=>'gzip,deflate';
 like $resp->header('Vary'), qr/\bAccept-Encoding\b/i, 'Vary Header';
 is $resp->header('Content-Encoding'), 'gzip', 'Content-Encoding';
 is Compress::Zlib::memGunzip($resp->content), $expected, 'ungzipped body';
+
+##########################################
+# torsten-foertsch.jpg
+##########################################
+t_debug 'Testing torsten-foertsch.jpg';
+
+$resp=GET("/perldoc/Apache2::PodBrowser/torsten-foertsch.jpg");
+is $resp->code, 200, 'Code';
+is $resp->header('Content-Length'),
+    (-s t_catfile Apache::Test::vars->{top_dir},
+                  qw/blib lib Apache2 PodBrowser torsten-foertsch.jpg/),
+    'Image Size';
 
 ##########################################
 # BrowserMatch

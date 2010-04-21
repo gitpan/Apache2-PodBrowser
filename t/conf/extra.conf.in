@@ -34,6 +34,7 @@ BrowserMatch HUHU gzip-only-text/html
     PerlSetVar STYLESHEET fancy
     PerlSetVar NOINC 1
     PerlAddVar PODDIR @DocumentRoot@
+    PerlAddVar PODDIR @top_dir@/blib/lib
 </Location>
 
 <Location /simpletext>

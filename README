@@ -160,7 +160,7 @@ CONFIGURATION
 
     Also the environment variables "no-gzip" and "gzip-only-text/html" that
     can be set for example by the "BrowserMatch" directive are regarded. See
-    <the mod_deflate documentation > for more information
+    the mod_deflate documentation for more information
 
       PerlSetVar GZIP 1
 
@@ -319,6 +319,67 @@ HISTORY
 
         "Apache2::PodBrowser" uses the Apache::Test framework to test its
         work. Apache2::Pod::HTML tests almost only the presence of POD.
+
+Embedding HTML in POD
+    POD provides the
+
+     =begin html
+     ...
+     =end html
+
+    or
+
+     =for html ...
+
+    syntax. This module supports it. If you look at this document via this
+    module you'll probably see a picture of me on the right side.
+
+    Example:
+
+     =begin html
+
+     <img align="right"
+          alt="Picture of ..."
+          src="http://host.name/image.jpg"
+          border="0">
+
+     =end html
+
+    You might notice that the image URL is absolute. Wouldn't it be good to
+    bundle the images with the module, install them somewhere beside it in
+    @INC and reference them relatively?
+
+    It is possible to do that in perldoc mode. Just strip off the ".pm" or
+    ".pod" suffix from the installed perl module file name and make a
+    directory with that name. For example assuming that this module is
+    installed as:
+
+     /perl/lib/Apache2/PodBrowser.pm
+
+    create the directory
+
+     /perl/lib/Apache2/PodBrowser
+
+    and place the images there.
+
+    To include them in POD write:
+
+     =begin html
+
+     <img align="right"
+          alt="Picture of ..."
+          src="./Apache2::PodBrowser/torsten-foertsch.jpg"
+          border="0">
+
+     =end html
+
+    If the POD file name doesn't contain a dot (".") the last path component
+    is stripped off to get the directory name.
+
+    Note that you need to write the package name again. You also need to
+    either escape the semicolons as in
+    "src="Apache2%3A%3APodBrowser/torsten-foertsch.jpg"" or put a "./" in
+    front of the link.
 
 SEE ALSO
     Apache2::Pod::HTML

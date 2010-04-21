@@ -3,6 +3,7 @@ mk_README.sh
 README
 perl-Apache2-PodBrowser.spec
 lib/Apache2/PodBrowser.pm
+lib/Apache2/PodBrowser/torsten-foertsch.jpg
 lib/Apache2/PodBrowser/auto.css
 lib/Apache2/PodBrowser/fancy.css
 Makefile.PL

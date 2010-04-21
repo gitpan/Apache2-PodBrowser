@@ -1,3 +1,6 @@
+0.04	Tue Apr 20 16:36:57 CEST 2010
+	- implement relative path names for included images
+
 0.03	Sun Jun  7 18:02:56 CEST 2009
 	- Fix most links between perlvar and perlfunc when viewing
 	  single functions or variables
