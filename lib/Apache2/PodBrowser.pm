@@ -5,7 +5,7 @@ package Apache2::PodBrowser;
 use 5.008008;
 use strict;
 
-our $VERSION = '0.04';
+our $VERSION = '0.05';
 
 use Apache2::RequestRec ();
 use Apache2::RequestUtil ();
@@ -387,7 +387,15 @@ sub handler {
                 $path.=substr $r->path_info, $pos;
                 update_finfo $r, $path;
                 if( $r->finfo->filetype==APR::Const::FILETYPE_REG ) {
-                    if( substr($path, -4) eq '.png' ) {
+                    warn "args=".$r->args;
+                    if( $r->args=~/\bct=([^;&]+)/ ) {
+                        # content-type given as URL parameter
+                        my $ct=$1;
+                        $ct=~s/%([0-9a-f]{2})|\+/defined $1
+                                                 ? pack('H2', $1)
+                                                 : ' '/egi;
+                        $r->content_type($ct);
+                    } elsif( substr($path, -4) eq '.png' ) {
                         $r->content_type('image/png');
                     } elsif( substr($path, -4) eq '.jpg' or
                              substr($path, -5) eq '.jpeg' ) {
@@ -396,6 +404,12 @@ sub handler {
                         $r->content_type('image/gif');
                     } elsif( substr($path, -3) eq '.js' ) {
                         $r->content_type('text/javascript');
+                    } elsif( substr($path, -4) eq '.pdf' ) {
+                        $r->content_type('application/pdf');
+                    } elsif( substr($path, -5) eq '.html' ) {
+                        $r->content_type('text/html');
+                    } else {
+                        $r->content_type('application/octet-stream');
                     }
                     $r->set_content_length($r->finfo->size);
                     my $rc=$r->sendfile($path);
@@ -979,6 +993,20 @@ Note that you need to write the package name again. You also need to
 either escape the semicolons as in
 C<src="Apache2%3A%3APodBrowser/torsten-foertsch.jpg"> or put a C<./>
 in front of the link.
+
+A note about the content type of linked documents. C<Apache::PodBrowser>
+does not enter a new request cycle to ship these documents. So, the normal
+Apache Content-Type guessing does not take place. C<Apache::PodBrowser> knows
+a few file name extensions (C<png>, C<jpg>, C<jpeg>, C<gif>, C<js>,
+C<pdf> and C<html>). For those it sends the correct Content-Type headers.
+All other documents are shipped as C<application/octet-stream>.
+
+If a document needs a different Content-Type header it can be passed as
+CGI parameter:
+
+ src="Apache2%3A%3APodBrowser/torsten-foertsch.jpg?ct=text/plain"
+
+The link above will ship the image as C<text/plain>.
 
 =head1 SEE ALSO
 

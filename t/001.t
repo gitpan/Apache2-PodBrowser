@@ -5,13 +5,14 @@ use warnings FATAL => 'all';
 use Apache::Test qw{:withtestmore};
 use Test::More;
 use Apache::TestUtil;
-use Apache::TestUtil qw/t_write_file t_catfile/;
+use Apache::TestUtil qw/t_write_file t_catfile t_debug
+                        t_start_error_log_watch t_finish_error_log_watch/;
 use Apache::TestRequest qw{GET_BODY GET};
 use File::Spec;
 use Compress::Zlib;
 
 #plan 'no_plan';
-plan tests => 74;
+plan tests => 78;
 
 Apache::TestRequest::user_agent(reset => 1,
 				requests_redirectable => 0);
@@ -137,16 +138,27 @@ unlike $resp, qr!href="\./\?\?"!, 'Function Index: no "Function Index" link';
 t_debug 'Testing content compression with POD index';
 
 my $expected=GET_BODY("/perldoc/"); # save a body we know for next tests
+$expected=~s/<!--.*?-->//sg;
 
 $resp=GET '/perldoc/', 'Accept-Encoding'=>'gzip,deflate';
 like $resp->header('Vary'), qr/\bAccept-Encoding\b/i, 'Vary Header';
 is $resp->header('Content-Encoding'), 'deflate', 'Content-Encoding';
-is uncompress($resp->content), $expected, 'inflated body';
+
+{
+    my $got=uncompress($resp->content);
+    $got=~s/<!--.*?-->//sg;
+    is $got, $expected, 'inflated body';
+}
 
 $resp=GET '/perldoc/', 'Accept-Encoding'=>'gzip';
 like $resp->header('Vary'), qr/\bAccept-Encoding\b/i, 'Vary Header';
 is $resp->header('Content-Encoding'), 'gzip', 'Content-Encoding';
-is Compress::Zlib::memGunzip($resp->content), $expected, 'ungzipped body';
+
+{
+    my $got=Compress::Zlib::memGunzip($resp->content);
+    $got=~s/<!--.*?-->//sg;
+    is $got, $expected, 'ungzipped body';
+}
 
 $resp=GET '/perldoc/';
 like $resp->header('Vary'), qr/\bAccept-Encoding\b/i, 'Vary Header';
@@ -177,7 +189,13 @@ $expected=GET_BODY("/perldoc/?ref");
 $resp=GET '/perldoc/?ref', 'Accept-Encoding'=>'gzip,deflate';
 like $resp->header('Vary'), qr/\bAccept-Encoding\b/i, 'Vary Header';
 is $resp->header('Content-Encoding'), 'deflate', 'Content-Encoding';
-is uncompress($resp->content), $expected, 'inflated body';
+
+$expected=~s/<!--.*?-->//sg;
+{
+    my $got=uncompress($resp->content);
+    $got=~s/<!--.*?-->//sg;
+    is $got, $expected, 'inflated body';
+}
 
 ##########################################
 # perldoc mode
@@ -206,7 +224,13 @@ $expected=GET_BODY("/perldoc/d::p");
 $resp=GET '/perldoc/d::p', 'Accept-Encoding'=>'gzip,deflate';
 like $resp->header('Vary'), qr/\bAccept-Encoding\b/i, 'Vary Header';
 is $resp->header('Content-Encoding'), 'deflate', 'Content-Encoding';
-is uncompress($resp->content), $expected, 'inflated body';
+
+$expected=~s/<!--.*?-->//sg;
+{
+    my $got=uncompress($resp->content);
+    $got=~s/<!--.*?-->//sg;
+    is $got, $expected, 'inflated body';
+}
 
 ##########################################
 # stylesheets
@@ -226,7 +250,13 @@ $expected=GET_BODY("/perldoc/fancy.css");
 $resp=GET '/perldoc/fancy.css', 'Accept-Encoding'=>'gzip,deflate';
 like $resp->header('Vary'), qr/\bAccept-Encoding\b/i, 'Vary Header';
 is $resp->header('Content-Encoding'), 'gzip', 'Content-Encoding';
-is Compress::Zlib::memGunzip($resp->content), $expected, 'ungzipped body';
+
+$expected=~s/<!--.*?-->//sg;
+{
+    my $got=Compress::Zlib::memGunzip($resp->content);
+    $got=~s/<!--.*?-->//sg;
+    is $got, $expected, 'ungzipped body';
+}
 
 ##########################################
 # torsten-foertsch.jpg
@@ -239,6 +269,14 @@ is $resp->header('Content-Length'),
     (-s t_catfile Apache::Test::vars->{top_dir},
                   qw/blib lib Apache2 PodBrowser torsten-foertsch.jpg/),
     'Image Size';
+is $resp->header('Content-Type'), 'image/jpeg', 'Content Type';
+
+my $bodylen=length $resp->content;
+is $bodylen, $resp->header('Content-Length'), 'resp body size';
+
+$resp=GET("/perldoc/Apache2::PodBrowser/torsten-foertsch.jpg?ct=text/plain");
+is length $resp->content, $bodylen, 'resp body size 2';
+is $resp->header('Content-Type'), 'text/plain', 'Content Type 2';
 
 ##########################################
 # BrowserMatch
@@ -275,4 +313,10 @@ $expected=GET_BODY("/perldoc/d::p");
 $resp=GET '/perldoc/d::p', 'Accept-Encoding'=>'gzip,deflate';
 like $resp->header('Vary'), qr/\bAccept-Encoding\b/i, 'Vary Header';
 is $resp->header('Content-Encoding'), 'deflate', 'Content-Encoding';
-is uncompress($resp->content), $expected, 'inflated body';
+
+$expected=~s/<!--.*?-->//sg;
+{
+    my $got=uncompress($resp->content);
+    $got=~s/<!--.*?-->//sg;
+    is $got, $expected, 'inflated body';
+}

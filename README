@@ -381,6 +381,21 @@ Embedding HTML in POD
     "src="Apache2%3A%3APodBrowser/torsten-foertsch.jpg"" or put a "./" in
     front of the link.
 
+    A note about the content type of linked documents. "Apache::PodBrowser"
+    does not enter a new request cycle to ship these documents. So, the
+    normal Apache Content-Type guessing does not take place.
+    "Apache::PodBrowser" knows a few file name extensions ("png", "jpg",
+    "jpeg", "gif", "js", "pdf" and "html"). For those it sends the correct
+    Content-Type headers. All other documents are shipped as
+    "application/octet-stream".
+
+    If a document needs a different Content-Type header it can be passed as
+    CGI parameter:
+
+     src="Apache2%3A%3APodBrowser/torsten-foertsch.jpg?ct=text/plain"
+
+    The link above will ship the image as "text/plain".
+
 SEE ALSO
     Apache2::Pod::HTML
     Pod::Simple
