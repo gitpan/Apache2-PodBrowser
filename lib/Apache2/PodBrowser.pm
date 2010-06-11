@@ -5,7 +5,7 @@ package Apache2::PodBrowser;
 use 5.008008;
 use strict;
 
-our $VERSION = '0.05';
+{our $VERSION = '0.06'}
 
 use Apache2::RequestRec ();
 use Apache2::RequestUtil ();
@@ -149,9 +149,13 @@ sub _findex {
         open my $f, '<', _findpod($r, 'perlfunc', 1) or
             die \Apache2::Const::NOT_FOUND;
 
+        while ( <$f> ) {
+            /^=head2 Alphabetical Listing of Perl Functions/ and last;
+        }
+
         my $level=0;
         while ( <$f> ) {
-            if( ($level==0 && /^=over 8/)..($level==1 && /^=back/) ) {
+            if( ($level==0 && /^=over/)..($level==1 && /^=back/) ) {
                 /^=over/ and $level++;
                 /^=back/ and $level--;
                 $level==1 && /^=item ([-\w]+)/ and undef $unique{$1};
@@ -231,7 +235,10 @@ sub _scanit {
     open my $f, '<', _findpod($r, $where, 1) or
         die \Apache2::Const::NOT_FOUND;
     # Skip introduction
-    while( <$f> ) {/^=over 8/ and last}
+    my $anchor=($where eq 'perlvar'
+                ? qr/^=over 8/
+                : qr/^=head2 Alphabetical Listing of Perl Functions/);
+    while( <$f> ) {$_=~$anchor and last}
 
     # Look for our function
     my $found=0;
@@ -387,7 +394,6 @@ sub handler {
                 $path.=substr $r->path_info, $pos;
                 update_finfo $r, $path;
                 if( $r->finfo->filetype==APR::Const::FILETYPE_REG ) {
-                    warn "args=".$r->args;
                     if( $r->args=~/\bct=([^;&]+)/ ) {
                         # content-type given as URL parameter
                         my $ct=$1;
@@ -503,6 +509,8 @@ sub Fixup {                     # use a fixup instead of a transhandler here
     use strict;
     use base qw/Pod::Simple::HTML/;
 
+    our $VERSION=Apache2::PodBrowser->VERSION;
+
     @INC{'Apache2/PodBrowser/Formatter.pm'}=1;
 
     sub new {
@@ -531,6 +539,8 @@ sub Fixup {                     # use a fixup instead of a transhandler here
 
     use strict;
     use base qw/Apache2::PodBrowser::Formatter/;
+
+    our $VERSION=Apache2::PodBrowser->VERSION;
 
     @INC{'Apache2/PodBrowser/DirectMode.pm'}=1;
 
