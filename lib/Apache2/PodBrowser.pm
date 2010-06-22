@@ -5,7 +5,7 @@ package Apache2::PodBrowser;
 use 5.008008;
 use strict;
 
-{our $VERSION = '0.06'}
+{our $VERSION = '0.07'}
 
 use Apache2::RequestRec ();
 use Apache2::RequestUtil ();
@@ -24,6 +24,7 @@ use Pod::Simple::HTML;
 use constant {
   INDEX_NORMAL=>0,
   INDEX_PODINDEX=>1,
+  INDEX_PODCACHED=>10,
   INDEX_FUNCINDEX=>2,
 };
 
@@ -32,7 +33,9 @@ sub _indexlink {
      join( '', map {
          "    <a href=\"$_->[1]\">$_->[0]</a>\n";
      } ($_[0] ==INDEX_PODINDEX  ? (['Function and Variable Index', './??'])
-        :$_[0]==INDEX_FUNCINDEX ? (['Pod Index', './'])
+        : $_[0]==INDEX_PODCACHED ? (['Function and Variable Index', './??'],
+                                    ['Update POD Cache', './-'])
+        : $_[0]==INDEX_FUNCINDEX ? (['Pod Index', './'])
         : (['Pod Index', './'], ['Function and Variable Index', './??']))).
      "</div>\n");
 }
@@ -41,10 +44,10 @@ sub _header {
     my ($kind, $style)=@_;
 
     my ($title, $uplink)=
-        ($kind==INDEX_PODINDEX
-         ? ('POD Index', _indexlink($kind))
-         :$kind==INDEX_FUNCINDEX
-         ? ('Function and Variable Index', _indexlink($kind))
+        ($kind==INDEX_PODINDEX ? ('POD Index', _indexlink($kind))
+         :$kind==INDEX_PODCACHED ? ('POD Index', _indexlink($kind))
+         :$kind==INDEX_FUNCINDEX ? ('Function and Variable Index',
+                                    _indexlink($kind))
          :());
 
     <<"EOF";
@@ -103,11 +106,11 @@ sub _footer {"</body></html>\n"}
 sub _stylesheet {
     my ($r)=@_;
 
-    my $stylesheet = $r->dir_config('STYLESHEET') || '';
-    if ($stylesheet =~ /^auto$/i) {
-        $stylesheet = $r->location . '/auto.css';
-    } elsif ($stylesheet =~ /^fancy$/i) {
-        $stylesheet = $r->location . '/fancy.css';
+    my $stylesheet=$r->dir_config('STYLESHEET') || '';
+    if ($stylesheet=~/^auto$/i) {
+        $stylesheet='./auto.css';
+    } elsif ($stylesheet=~/^fancy$/i) {
+        $stylesheet='./fancy.css';
     }
 
     return $stylesheet;
@@ -189,28 +192,75 @@ sub _findex {
             _footer);
 }
 
-sub _index {
+sub __pod_idx {
     my ($r)=@_;
+    local $SIG{__WARN__}=sub{}; # silence some warnings
 
-    my @links=do {
-        my %unique;
-        undef @unique{values %{+{do {
-            local $SIG{__WARN__}=sub{}; # silence some warnings
-            Pod::Find::pod_find
-                  ({
-                    -inc=>!$r->dir_config->get('NOINC'),
-                    -script=>1,
-                   },
-                   $r->dir_config->get('PODDIR'));
-        }}}};
+    my %unique;
+    my $x=1;
+    undef @unique{grep {
+        $x^=1;
+    } Pod::Find::pod_find({
+                           -inc=>!$r->dir_config->get('NOINC'),
+                           -script=>1,
+                          },
+                          $r->dir_config->get('PODDIR'))};
+    return sort keys %unique;
+}
+
+{
+    my %cachedb;
+    sub _update_cache {
+        my ($r, $fn, $force)=@_;
+        my $db;
+        eval {
+            require MMapDB;
+            if( !$force and exists $cachedb{$fn} ) {
+                $db=$cachedb{$fn};
+                $db->start;
+            } else {
+                if( exists $cachedb{$fn} ) {
+                    $db=$cachedb{$fn};
+                } else {
+                    $cachedb{$fn}=$db=MMapDB->new(filename=>$fn);
+                }
+                if( !$db->start or $force ) {
+                    $db->begin;
+                    $db->clear;
+                    my $i=0;
+                    for my $m (__pod_idx $r) {
+                        $db->insert([['idx'], pack("N",$i++), $m]);
+                    }
+                    $db->commit;
+                }
+            }
+        };
+        die ref $@ ? ${$@} : $@ if $@;
+        $db->datamode=MMapDB::DATAMODE_SIMPLE();
+        return wantarray ? @{$db->main_index->{idx}} : undef;
+    }
+
+    sub _index {
+        my ($r, $force)=@_;
+
+        my @links;
+        my $dbfile;
+        my $idxkind;
+
         _reset_link_generator;
-        map {_link($_, '')} sort keys %unique;
-    };
+        if( defined ($dbfile=$r->dir_config->get('CACHE')) ) {
+            @links=map {_link($_, '')} _update_cache $r, $dbfile, $force;
+            $idxkind=INDEX_PODCACHED;
+        } else {
+            @links=map {_link($_, '')} __pod_idx $r;
+            $idxkind=INDEX_PODINDEX;
+        }
 
-    return (_header(INDEX_PODINDEX, _stylesheet($r)).
-            _gen_index.
-            join("\n", @links)."\n".
-            _footer);
+        return (_header($idxkind, _stylesheet($r)).
+                _gen_index.
+                join("\n", @links)."\n".
+                _footer);
+    }
 }
 
 sub _scanit {
@@ -365,16 +415,24 @@ sub handler {
             my $loc=$r->location;
             $loc=~s!/+$!!;          # cut off trailing slash;
             $r->path_info(substr($r->uri, length($loc)));
+            my $pi=$r->path_info;
 
             my $pos;
-            if ($r->path_info eq '') {
+            if ($pi eq '') {
                 # issue a redirect to ourself with a trailing slash
                 # to generate correct links.
                 $r->err_headers_out->{Location}=
                     $r->construct_url($r->uri.'/'.
                                       (length $r->args ? '?'.$r->args : ''));
                 die \Apache2::Const::REDIRECT;
-            } elsif($r->path_info eq '/') {
+            } elsif($pi eq '/-') {
+                # update cache and redirect to index.
+                _update_cache $r, $r->dir_config->get('CACHE'), 1;
+                $r->err_headers_out->{Location}=
+                    $r->construct_url(substr($r->uri, 0, -1).
+                                      (length $r->args ? '?'.$r->args : ''));
+                die \Apache2::Const::REDIRECT;
+            } elsif($pi eq '/') {
                 if( $r->args ) {    # /perldoc/?FUNCTION
                     if( $r->args eq '?' ) {
                         $body=_compress(_findex($r), $r);
@@ -384,14 +442,14 @@ sub handler {
                 } else {            # generate index
                     $body=_compress(_index($r), $r);
                 }
-            } elsif(($pos=index $r->path_info, '/', 1)>0) {
+            } elsif(($pos=index $pi, '/', 1)>0) {
                 # image or something like that, e.g.
                 #   =for html <img src="Apache2::PodBrowser/img.png">
-                my $path=_findpod($r, substr($r->path_info, 1, $pos-1));
+                my $path=_findpod($r, substr($pi, 1, $pos-1));
                 unless( $path=~s!\.[^.]+$!! ) {
                     $path=~s!/[^/]+$!!;
                 }
-                $path.=substr $r->path_info, $pos;
+                $path.=substr $pi, $pos;
                 update_finfo $r, $path;
                 if( $r->finfo->filetype==APR::Const::FILETYPE_REG ) {
                     if( $r->args=~/\bct=([^;&]+)/ ) {
@@ -425,7 +483,7 @@ sub handler {
                     die \Apache2::Const::NOT_FOUND;
                 }
             } else {
-                my $fn=_findpod($r, $r->path_info);
+                my $fn=_findpod($r, $pi);
                 update_finfo $r, $fn;
                 $body=_compress(_body($r, $fn, undef, 1), $r);
             }
@@ -786,6 +844,28 @@ L<http://localhost/perldoc/?functionname> C<@INC> is used nevertheless
 to locate C<perlfunc.pod> if it is not found in one of the given directories.
 
 In direct mode this variable is ignored.
+
+=head3 CACHE
+
+When in perldoc mode C<Apache2::PodBrowser> uses
+L<Pod::Find::pod_find>
+to generate a list of available POD files. This may take quite a while
+depending upon the number of directories and files to scan for POD.
+
+To avoid to repeat this for each POD index request one can set up a cache.
+
+  PerlSetVar CACHE /path/to/cache.mmdb
+
+The cache file itself is created on the first access to the index. The POD
+index page then contains a link to update the cache. So, if a POD file
+is added or removed from the system this link is to be clicked to keep
+the POD index page up to date.
+
+The cache file itself is a L<MMapDB> object. If this module is not available
+you'll probably get a C<404 - NOT FOUND> response the next time the POD index
+page is requested if C<CACHE> is set.
+
+The directory containing the cache file must be writable by the C<httpd>.
 
 =head3 CONTENTTYPE
 

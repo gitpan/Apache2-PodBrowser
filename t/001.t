@@ -10,9 +10,10 @@ use Apache::TestUtil qw/t_write_file t_catfile t_debug
 use Apache::TestRequest qw{GET_BODY GET};
 use File::Spec;
 use Compress::Zlib;
+use Time::HiRes ();
 
 #plan 'no_plan';
-plan tests => 78;
+plan tests => 85;
 
 Apache::TestRequest::user_agent(reset => 1,
 				requests_redirectable => 0);
@@ -165,6 +166,85 @@ like $resp->header('Vary'), qr/\bAccept-Encoding\b/i, 'Vary Header';
 is $resp->header('Content-Encoding'), undef, 'Content-Encoding';
 is $resp->content, $expected, 'plain body';
 
+SKIP: {
+    skip "need MMapDB to test POD index caching", 7
+        unless have_module 'MMapDB';
+    ##########################################
+    # POD index: cached
+    ##########################################
+    t_debug 'Testing cached POD index';
+
+    unlink t_catfile Apache::Test::vars->{t_dir}, 'cache.mmdb';
+
+    $expected=~s!(\<a href=\"\./\?\?\"\>Function and Variable Index\<\/a\>)!
+        $1.qq{\n    <a href="./-">Update POD Cache</a>}!e;
+
+    die 'Please remove '.t_catfile Apache::Test::vars->{t_dir}, 'cache.mmdb'
+        if( -e t_catfile Apache::Test::vars->{t_dir}, 'cache.mmdb' );
+
+    {
+        my $time=Time::HiRes::time;
+        $resp=GET '/cached/';
+        t_debug 'Cache creation took '.(Time::HiRes::time-$time).' sec.';
+    }
+
+    {
+        my $got=$resp->content;
+        $got=~s/<!--.*?-->//sg;
+        is $got, $expected, 'cached index 1';
+
+        #    for([got=>$got], [expected=>$expected]) {
+        #        my $f; open $f, '>', $_->[0] and print $f $_->[1];
+        #    }
+    }
+    ok -f (t_catfile Apache::Test::vars->{t_dir}, 'cache.mmdb'),
+        "cache.mmdb created";
+
+    t_write_file(t_catfile($droot, 'd', 'p2.pod'), <<'POD');
+
+=head1 NAME bla
+
+=head1 SYNOPSIS
+
+=head2 Head2
+
+some paragraph
+
+POD
+
+    {
+        my $time=Time::HiRes::time;
+        $resp=GET '/cached/';
+        t_debug 'Cache usage took '.(Time::HiRes::time-$time).' sec.';
+    }
+
+    unlike $resp->content, qr/>d::p2</, 'd::p2 not found';
+
+    {
+        my $got=$resp->content;
+        $got=~s/<!--.*?-->//sg;
+        is $got, $expected, 'cached index 2';
+    }
+
+    {
+        my $time=Time::HiRes::time;
+        $resp=GET '/cached/-';
+        t_debug 'Cache rebuild took '.(Time::HiRes::time-$time).' sec.';
+    }
+
+    is $resp->code, 302, 'cached index rebuild: http code';
+    like $resp->header('Location'), qr!/cached/$!,
+        'cached index rebuild: Location';
+
+    {
+        my $time=Time::HiRes::time;
+        $resp=GET '/cached/';
+        t_debug 'Cache usage took '.(Time::HiRes::time-$time).' sec.';
+    }
+
+    like $resp->content, qr/>d::p2</, 'd::p2 now found';
+}
+
 ##########################################
 # perldoc -f mode
 ##########################################
@@ -278,45 +358,49 @@ $resp=GET("/perldoc/Apache2::PodBrowser/torsten-foertsch.jpg?ct=text/plain");
 is length $resp->content, $bodylen, 'resp body size 2';
 is $resp->header('Content-Type'), 'text/plain', 'Content Type 2';
 
-##########################################
-# BrowserMatch
-##########################################
-t_debug 'Testing BrowserMatch';
+SKIP: {
+    skip "BrowserMatch needs mod_setenvif", 12
+        unless have_module 'mod_setenvif.c';
+    ##########################################
+    # BrowserMatch
+    ##########################################
+    t_debug 'Testing BrowserMatch';
 
-Apache::TestRequest::user_agent(reset => 1,
-				requests_redirectable => 0,
-                                agent => 'I am MSIE. Nice to meet you!');
+    Apache::TestRequest::user_agent(reset => 1,
+                                    requests_redirectable => 0,
+                                    agent => 'I am MSIE. Nice to meet you!');
 
-$expected=GET_BODY("/perldoc/fancy.css");
-$resp=GET '/perldoc/fancy.css', 'Accept-Encoding'=>'gzip,deflate';
-like $resp->header('Vary'), qr/\bAccept-Encoding\b/i, 'Vary Header';
-is $resp->header('Content-Encoding'), undef, 'Content-Encoding';
-is $resp->content, $expected, 'plain body';
+    $expected=GET_BODY("/perldoc/fancy.css");
+    $resp=GET '/perldoc/fancy.css', 'Accept-Encoding'=>'gzip,deflate';
+    like $resp->header('Vary'), qr/\bAccept-Encoding\b/i, 'Vary Header';
+    is $resp->header('Content-Encoding'), undef, 'Content-Encoding';
+    is $resp->content, $expected, 'plain body';
 
-$expected=GET_BODY("/perldoc/d::p");
-$resp=GET '/perldoc/d::p', 'Accept-Encoding'=>'gzip,deflate';
-like $resp->header('Vary'), qr/\bAccept-Encoding\b/i, 'Vary Header';
-is $resp->header('Content-Encoding'), undef, 'Content-Encoding';
-is $resp->content, $expected, 'plain body';
+    $expected=GET_BODY("/perldoc/d::p");
+    $resp=GET '/perldoc/d::p', 'Accept-Encoding'=>'gzip,deflate';
+    like $resp->header('Vary'), qr/\bAccept-Encoding\b/i, 'Vary Header';
+    is $resp->header('Content-Encoding'), undef, 'Content-Encoding';
+    is $resp->content, $expected, 'plain body';
 
-Apache::TestRequest::user_agent(reset => 1,
-				requests_redirectable => 0,
-                                agent => 'I am HUHU. Nice to meet you!');
+    Apache::TestRequest::user_agent(reset => 1,
+                                    requests_redirectable => 0,
+                                    agent => 'I am HUHU. Nice to meet you!');
 
-$expected=GET_BODY("/perldoc/fancy.css");
-$resp=GET '/perldoc/fancy.css', 'Accept-Encoding'=>'gzip,deflate';
-like $resp->header('Vary'), qr/\bAccept-Encoding\b/i, 'Vary Header';
-is $resp->header('Content-Encoding'), undef, 'Content-Encoding';
-is $resp->content, $expected, 'plain body';
+    $expected=GET_BODY("/perldoc/fancy.css");
+    $resp=GET '/perldoc/fancy.css', 'Accept-Encoding'=>'gzip,deflate';
+    like $resp->header('Vary'), qr/\bAccept-Encoding\b/i, 'Vary Header';
+    is $resp->header('Content-Encoding'), undef, 'Content-Encoding';
+    is $resp->content, $expected, 'plain body';
 
-$expected=GET_BODY("/perldoc/d::p");
-$resp=GET '/perldoc/d::p', 'Accept-Encoding'=>'gzip,deflate';
-like $resp->header('Vary'), qr/\bAccept-Encoding\b/i, 'Vary Header';
-is $resp->header('Content-Encoding'), 'deflate', 'Content-Encoding';
+    $expected=GET_BODY("/perldoc/d::p");
+    $resp=GET '/perldoc/d::p', 'Accept-Encoding'=>'gzip,deflate';
+    like $resp->header('Vary'), qr/\bAccept-Encoding\b/i, 'Vary Header';
+    is $resp->header('Content-Encoding'), 'deflate', 'Content-Encoding';
 
-$expected=~s/<!--.*?-->//sg;
-{
-    my $got=uncompress($resp->content);
-    $got=~s/<!--.*?-->//sg;
-    is $got, $expected, 'inflated body';
+    $expected=~s/<!--.*?-->//sg;
+    {
+        my $got=uncompress($resp->content);
+        $got=~s/<!--.*?-->//sg;
+        is $got, $expected, 'inflated body';
+    }
 }

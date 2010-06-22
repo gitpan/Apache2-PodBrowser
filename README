@@ -190,6 +190,27 @@ CONFIGURATION
 
     In direct mode this variable is ignored.
 
+   CACHE
+    When in perldoc mode "Apache2::PodBrowser" uses Pod::Find::pod_find to
+    generate a list of available POD files. This may take quite a while
+    depending upon the number of directories and files to scan for POD.
+
+    To avoid to repeat this for each POD index request one can set up a
+    cache.
+
+      PerlSetVar CACHE /path/to/cache.mmdb
+
+    The cache file itself is created on the first access to the index. The
+    POD index page then contains a link to update the cache. So, if a POD
+    file is added or removed from the system this link is to be clicked to
+    keep the POD index page up to date.
+
+    The cache file itself is a MMapDB object. If this module is not
+    available you'll probably get a "404 - NOT FOUND" response the next time
+    the POD index page is requested if "CACHE" is set.
+
+    The directory containing the cache file must be writable by the "httpd".
+
    CONTENTTYPE
     You'll probably need that only for plain text output with the
     Pod::Simple::Text parser. Here one can set the content type of the

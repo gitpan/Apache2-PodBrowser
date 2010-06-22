@@ -7,7 +7,7 @@ Requires:     perl(Pod::Find) perl(Pod::Simple::HTML) perl(Test::More)
 Requires:     perl(File::Spec)
 Autoreqprov:  on
 Summary:      Apache2::PodBrowser
-Version:      0.06
+Version:      0.07
 Release:      1
 Source:       Apache2-PodBrowser-%{version}.tar.gz
 BuildRoot:    %{_tmppath}/%{name}-%{version}-build
@@ -24,6 +24,7 @@ Authors:
 # ---------------------------------------------------------------------------
 
 %build
+export PERL5LIB=/opt/mod_perl
 perl Makefile.PL
 make && make test
 # ---------------------------------------------------------------------------

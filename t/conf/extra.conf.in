@@ -1,7 +1,9 @@
 PerlModule Apache2::PodBrowser
 
-BrowserMatch MSIE no-gzip
-BrowserMatch HUHU gzip-only-text/html
+<IfModule setenvif_module>
+    BrowserMatch MSIE no-gzip
+    BrowserMatch HUHU gzip-only-text/html
+</IfModule>
 
 <Directory @DocumentRoot@>
     Options +Indexes
@@ -25,6 +27,16 @@ BrowserMatch HUHU gzip-only-text/html
     PerlSetVar STYLESHEET fancy
     PerlSetVar GZIP 1
     PerlAddVar PODDIR @DocumentRoot@
+</Location>
+
+<Location /cached>
+    SetHandler modperl
+    PerlResponseHandler Apache2::PodBrowser
+    PerlFixupHandler Apache2::PodBrowser::Fixup
+    PerlSetVar STYLESHEET fancy
+    PerlSetVar GZIP 1
+    PerlAddVar PODDIR @DocumentRoot@
+    PerlAddVar CACHE @t_dir@/cache.mmdb
 </Location>
 
 <Location /NOINC>
