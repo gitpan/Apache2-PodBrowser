@@ -160,7 +160,9 @@ CONFIGURATION
 
     Also the environment variables "no-gzip" and "gzip-only-text/html" that
     can be set for example by the "BrowserMatch" directive are regarded. See
-    the mod_deflate documentation for more information
+    the mod_deflate documentation
+    <http://httpd.apache.org/docs/2.2/mod/mod_deflate.html#recommended> for
+    more information
 
       PerlSetVar GZIP 1
 
@@ -424,7 +426,7 @@ SEE ALSO
     Pod::Simple::Text
 
 AUTHOR
-    Torsten Förtsch "<torsten.foertsch@gmx.net>"
+    Torsten FÃ¶rtsch "<torsten.foertsch@gmx.net>"
 
 LICENSE
     This package is licensed under the same terms as Perl itself.

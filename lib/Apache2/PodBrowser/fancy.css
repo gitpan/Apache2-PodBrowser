@@ -18,6 +18,11 @@ A:link, A:visited {
     color: #069;
 }
 
+pre, code, kbd, samp, tt {
+    font-family: monospace,monospace;
+    font-size: 1em;
+}
+
 PRE {
     background: #eeeeee;
     border: 1px solid #888888;
@@ -29,9 +34,7 @@ PRE {
 
 CODE {
     color: #c00;
-    font-family: monospace;
     font-weight: bold;
-    font-size: 110%;
 }
 
 DT {

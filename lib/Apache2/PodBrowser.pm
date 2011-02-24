@@ -5,7 +5,7 @@ package Apache2::PodBrowser;
 use 5.008008;
 use strict;
 
-{our $VERSION = '0.07'}
+{our $VERSION = '0.08'}
 
 use Apache2::RequestRec ();
 use Apache2::RequestUtil ();

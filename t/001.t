@@ -2,8 +2,7 @@
 use strict;
 use warnings FATAL => 'all';
 
-use Apache::Test qw{:withtestmore};
-use Test::More;
+use Apache::Test qw/-withtestmore/;
 use Apache::TestUtil;
 use Apache::TestUtil qw/t_write_file t_catfile t_debug
                         t_start_error_log_watch t_finish_error_log_watch/;

@@ -6,6 +6,11 @@ BODY {
     padding: 1ex;
 }
 
+pre, code, kbd, samp, tt {
+    font-family: monospace,monospace;
+    font-size: 1em;
+}
+
 TABLE {
     border-collapse: collapse;
     border-spacing: 0;

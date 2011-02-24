@@ -1,3 +1,7 @@
+0.08	Thu Feb 24 16:36:32 CET 2011
+	- fixing browser issue with monospace font sizes
+	- fix :withtestmore in test files
+
 0.07	Tue Jun 22 16:38:18 CEST 2010
 	- skip tests that need BrowserMatch unless mod_setenvif is present
 	- MMapDB cache for POD index page
